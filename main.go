@@ -162,6 +162,10 @@ func handlePlayerQuit(g *Game, pl Player) {
 		}
 	}
 	pl.Connection.Close()
+	g.resetBoard()
+	g.Players[0].Score = 0
+	g.Players[0].Connection.Write([]byte("\n\n your opponent leave the game.\n Reset.\n Waiting for new opponent.\n"))
+	fmt.Printf("client %v disconnected\n", pl.Connection.RemoteAddr().String())
 }
 
 func handlePlayerPosition(pos int, g *Game, p Player) {
@@ -177,6 +181,15 @@ func handlePlayerPosition(pos int, g *Game, p Player) {
 	}
 	if ws := g.getWinnerSymbol(); ws != noWinner {
 		winner := g.getPlayerWithSymbol(ws)
+		winner.Connection.Write([]byte("\n\n\033[1;32mYOU WIN\033[0m\n\n\n"))
+		if winner.Index == 1 {
+			loser := g.Players[0]
+			loser.Connection.Write([]byte("\n\n\033[1;33mYOU LOSE\033[0m\n\n\n"))
+		} else {
+			loser := g.Players[1]
+			loser.Connection.Write([]byte("\n\n\033[1;33mYOU LOSE\033[0m\n\n\n"))
+
+		}
 		winner.incrementScore()
 	}
 	if g.shouldResetBoard() {
@@ -199,8 +212,9 @@ func main() {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatalf("Failed to start listner: %v", err)
+		return
 	}
-	fmt.Printf("Listening on %v \n\n", addr)
+	defer listener.Close()
 
 	var game = Game{
 		Board: make(map[int]string, 9),
@@ -208,10 +222,13 @@ func main() {
 
 	game.resetBoard()
 
-	defer listener.Close()
-
+	fmt.Printf("Listening on %v \n\n", addr)
 	for {
-		conn, _ := listener.Accept()
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Fatal("Error with accepting client: ", err)
+			continue
+		}
 
 		if game.isFullPlaces() {
 			rejectConnection(conn)
